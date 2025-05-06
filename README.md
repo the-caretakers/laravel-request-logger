@@ -122,6 +122,50 @@ protected function schedule(Schedule $schedule)
 }
 ```
 
+## Querying Logs
+
+The package provides a `RequestLogQueryBuilder` class to help retrieve and filter logged request data directly from the stored log files.
+
+**Basic Usage:**
+
+```php
+use TheCaretakers\RequestLogger\Query\RequestLogQueryBuilder;
+use Illuminate\Support\Facades\Date;
+
+// Get all logs from today's files
+$logsToday = \TheCaretakers\RequestLogger\RequestLog::query()
+    ->whereDate(\Illuminate\Support\Carbon::now())
+    ->get(); // Returns an Illuminate\Support\Collection
+
+// Count logs from yesterday
+$countYesterday = \TheCaretakers\RequestLogger\RequestLog::query()
+    ->whereDate(\Illuminate\Support\Carbon::yesterday())
+    ->count(); // Returns an integer count
+
+// Get the latest log entry
+$latestLog = \TheCaretakers\RequestLogger\RequestLog::query()
+    ->last(); // Returns the last log entry (as an array)
+```
+
+**Important Notes:**
+
+*   **`whereDate()` Filtering:** The `whereDate()` method filters which *log files* are read based on the date and your `log_path_structure` configuration. It expects a date string (e.g., `Y-m-d`) or a `DateTimeInterface` object.
+*   **Collection Filtering:** Any filtering *beyond* the date (e.g., by status code, specific URL, user ID) must be done on the `Collection` returned by the `get()` method or on the items within the `Paginator` instance returned by `paginate()`.
+
+    ```php
+    $specificUserLogs = (new RequestLogQueryBuilder())
+        ->whereDate(Date::now()->toDateString())
+        ->get()
+        ->filter(fn ($log) => $log['user_id'] === 123);
+
+    $errorLogs = (new RequestLogQueryBuilder())
+        ->whereDate(Date::now()->toDateString())
+        ->get()
+        ->filter(fn ($log) => $log['response']['status_code'] >= 500);
+    ```
+*   **Configuration:** The query builder relies on the `disk`, `log_path_structure`, and `log_format` settings defined in your `config/request-logger.php`. Ensure these are correctly configured. Currently, only the `json` log format is supported for querying.
+*   **Performance:** Querying large numbers of log files or very large individual files can be resource-intensive. Ensure your `log_path_structure` allows for efficient date-based filtering (e.g., including `{Y}`, `{m}`, `{d}`).
+
 ## Customization (Advanced)
 
 *   **Log Profile:** Create a class implementing `TheCaretakers\RequestLogger\Contracts\LogProfile` with a `shouldLog(Request $request): bool` method. Register it in the `log_profile` config key.
