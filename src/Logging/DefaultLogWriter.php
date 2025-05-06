@@ -47,7 +47,7 @@ class DefaultLogWriter implements LogWriter
                 $disk = Storage::disk($diskName);
 
                 if ($logFormat === 'json') {
-                    $logLine = json_encode($logData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE).PHP_EOL;
+                    $logLine = json_encode($logData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE).PHP_EOL;
                 } else {
                     // Basic line format (can be expanded)
                     $req = $logData['request'];
