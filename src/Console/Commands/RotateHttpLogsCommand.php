@@ -1,4 +1,3 @@
-```php
 <?php
 
 namespace TheCaretakers\RequestLogger\Console\Commands;
