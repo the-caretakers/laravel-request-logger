@@ -1,5 +1,8 @@
 <?php
 
+use TheCaretakers\RequestLogger\Logging\DefaultLogProfile;
+use TheCaretakers\RequestLogger\Logging\DefaultLogWriter;
+
 return [
     /*
     |--------------------------------------------------------------------------
@@ -15,20 +18,20 @@ return [
     | Log Profile
     |--------------------------------------------------------------------------
     | Class responsible for determining if a request/response should be logged.
-    | Must implement \TheCaretakers\RequestLogger\Contracts\LogProfile::class (adjust namespace if needed)
-    | Leave null to log all requests.
+    | Must implement \TheCaretakers\RequestLogger\Contracts\LogProfile::class
+    | Leave null to use the default profile (log all requests).
     */
-    'log_profile' => null, // Example: \App\Logging\MyLogProfile::class,
+    'log_profile' => \TheCaretakers\RequestLogger\Logging\DefaultLogProfile::class,
 
     /*
     |--------------------------------------------------------------------------
     | Log Writer
     |--------------------------------------------------------------------------
     | Class responsible for writing the log record.
-    | Must implement \TheCaretakers\RequestLogger\Contracts\LogWriter::class (adjust namespace if needed)
-    | Leave null to use the default writer.
+    | Must implement \TheCaretakers\RequestLogger\Contracts\LogWriter::class
+    | Leave null to use the default writer (uses log_channel or disk).
     */
-    'log_writer' => null, // Example: \App\Logging\MyLogWriter::class,
+    'log_writer' => \TheCaretakers\RequestLogger\Logging\DefaultLogWriter::class,
 
     /*
     |--------------------------------------------------------------------------
@@ -77,7 +80,7 @@ return [
     |--------------------------------------------------------------------------
     | Choose the format for log entries. 'json' is recommended.
     */
-    'log_format' => 'json', // Options: 'json', 'line' (future)
+    'log_format' => 'json', // Options: 'json', 'line'
 
     /*
     |--------------------------------------------------------------------------
@@ -103,6 +106,6 @@ return [
     |--------------------------------------------------------------------------
     | Determine if the response body should be logged. Be cautious with large responses.
     */
-    'log_response_body' => false, // Default to false
+    'log_response_body' => false,
 
 ];

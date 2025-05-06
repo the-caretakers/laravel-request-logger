@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use TheCaretakers\RequestLogger\Contracts\LogProfile;
 use TheCaretakers\RequestLogger\Contracts\LogWriter;
+use TheCaretakers\RequestLogger\Logging\DefaultLogProfile;
+use TheCaretakers\RequestLogger\Logging\DefaultLogWriter;
 use Throwable;
 
 class RequestLoggerMiddleware
@@ -21,18 +23,11 @@ class RequestLoggerMiddleware
     protected ?DateTimeImmutable $startTime = null;
 
     /**
-     * The application instance.
-     *
-     * @var \Illuminate\Contracts\Foundation\Application
-     */
-    protected $app;
-
-    /**
      * Create a new middleware instance.
      *
      * @return void
      */
-    public function __construct(Application $app)
+    public function __construct(protected Application $app)
     {
         $this->app = $app;
     }
@@ -45,7 +40,7 @@ class RequestLoggerMiddleware
      */
     public function handle(Request $request, Closure $next)
     {
-        // Decide whether to log this request *before* doing anything else
+        // Decide whether to log this request before doing anything else
         if (! $this->shouldLog($request)) {
             return $next($request);
         }
@@ -69,7 +64,7 @@ class RequestLoggerMiddleware
     /**
      * Handle tasks after the response has been sent to the browser.
      *
-     * @param  \Symfony\Component\HttpFoundation\Response  $response  // Use base Response for broader compatibility
+     * @param  \Symfony\Component\HttpFoundation\Response  $response
      */
     public function terminate(Request $request, $response): void
     {
@@ -80,9 +75,12 @@ class RequestLoggerMiddleware
 
         try {
             $endTime = new DateTimeImmutable;
-            $duration = $this->startTime ? $endTime->diff($this->startTime) : null;
 
-            // Request Details
+            // Calculate and round response time to 3 decimal places
+            $startTimeFloat = (float) $this->startTime->format('U.u');
+            $endTimeFloat = (float) $endTime->format('U.u');
+            $durationMs = round(($endTimeFloat - $startTimeFloat) * 1000, 3);
+
             $this->logData['request']['headers'] = $this->sanitize($request->headers->all(), config('request-logger.sensitive_keywords', []));
 
             if (config('request-logger.log_request_body', true)) {
@@ -92,19 +90,18 @@ class RequestLoggerMiddleware
                     $body = $request->json()->all(); // Get as array
                 } elseif ($request->isMethod('POST') || $request->isMethod('PUT') || $request->isMethod('PATCH')) {
                     $body = $request->input(); // Get form data
-                    // Note: File uploads are not directly in input(), handle separately if needed
+                    // Note: File uploads are not directly in input()
                 } else {
-                    $body = []; // Or $request->getContent() if raw body needed, but sanitize carefully
+                    $body = [];
                 }
                 $this->logData['request']['body'] = $this->sanitize($body, config('request-logger.sensitive_keywords', []));
             } else {
                 $this->logData['request']['body'] = '[NOT LOGGED]';
             }
 
-            // Response Details
             $this->logData['response'] = [
                 'end_time'    => $endTime->format('Y-m-d H:i:s.u P'),
-                'duration_ms' => $duration ? ($duration->s * 1000 + $duration->f / 1000) : null,
+                'duration_ms' => $durationMs,
                 'status_code' => $response->getStatusCode(),
                 'status_text' => Response::$statusTexts[$response->getStatusCode()] ?? 'Unknown',
                 'headers'     => $this->sanitize($response->headers->all(), config('request-logger.sensitive_keywords', [])),
@@ -181,109 +178,45 @@ class RequestLoggerMiddleware
     }
 
     /**
-     * Writes the collected log data using configured writer or default methods.
+     * Writes the collected log data using the configured or default LogWriter.
      */
     protected function writeLog(): void
     {
-        $logWriterClass = config('request-logger.log_writer');
+        $logWriterClass = config('request-logger.log_writer') ?: DefaultLogWriter::class;
+        $logWriter = null;
 
-        if ($logWriterClass) {
+        try {
+            if (! class_exists($logWriterClass)) {
+                Log::warning("RequestLoggerMiddleware: LogWriter class '{$logWriterClass}' not found. Falling back to DefaultLogWriter.");
+                $logWriterClass = DefaultLogWriter::class;
+            }
+
+            $logWriter = $this->app->make($logWriterClass);
+
+            if (! $logWriter instanceof LogWriter) {
+                Log::warning("RequestLoggerMiddleware: Configured LogWriter class '{$logWriterClass}' does not implement LogWriter interface. Falling back to DefaultLogWriter.");
+                // Instantiate the default writer if the custom one was invalid
+                $logWriter = $this->app->make(DefaultLogWriter::class);
+            } elseif (! method_exists($logWriter, 'write')) {
+                // This check is technically redundant due to the interface, but kept for safety
+                Log::warning("RequestLoggerMiddleware: LogWriter class '{$logWriterClass}' does not have a 'write' method. Falling back to DefaultLogWriter.");
+                $logWriter = $this->app->make(DefaultLogWriter::class);
+            }
+
+            // Use the resolved writer (either custom or default)
+            $logWriter->write($this->logData);
+
+        } catch (Throwable $e) {
+            Log::error("RequestLoggerMiddleware: Error executing LogWriter '{$logWriterClass}'.", [
+                'exception' => $e,
+                'logData'   => $this->logData,
+            ]);
             try {
-                if (! class_exists($logWriterClass)) {
-                    Log::warning("RequestLoggerMiddleware: LogWriter class '{$logWriterClass}' not found in config. Falling back to default writer.");
-                } else {
-                    $logWriter = $this->app->make($logWriterClass);
-
-                    if (! $logWriter instanceof LogWriter) {
-                        Log::warning("RequestLoggerMiddleware: Configured LogWriter class '{$logWriterClass}' does not implement TheCaretakers\\RequestLogger\\Contracts\\LogWriter. Falling back to default writer.");
-                    } elseif (! method_exists($logWriter, 'write')) {
-                        Log::warning("RequestLoggerMiddleware: LogWriter class '{$logWriterClass}' does not have a 'write' method. Falling back to default writer.");
-                    } else {
-                        // Use the custom writer
-                        $logWriter->write($this->logData);
-
-                        return; // Log written by custom writer
-                    }
-                }
-            } catch (Throwable $e) {
-                Log::error("RequestLoggerMiddleware: Error while executing LogWriter '{$logWriterClass}'. Falling back to default writer.", [
-                    'exception' => $e,
-                ]);
+                Log::error('Failed to execute configured LogWriter', ['writer' => $logWriterClass, 'error' => $e->getMessage()]);
+            } catch (Throwable $logException) {
+                // If even logging the error fails, do nothing further.
             }
         }
-
-        // Default Log Writing Logic (if no custom writer or custom writer failed)
-        $logChannel = config('request-logger.log_channel');
-        $logFormat = config('request-logger.log_format', 'json');
-
-        if ($logChannel) {
-            // Log via Laravel's logging system (context is automatically handled)
-            Log::channel($logChannel)->info('HTTP Request Log', $this->logData);
-        } else {
-            // Log directly to filesystem
-            $diskName = config('request-logger.disk');
-            if (! $diskName) {
-                Log::warning('RequestLoggerMiddleware: Filesystem disk not configured.');
-
-                return;
-            }
-
-            $pathTemplate = config('request-logger.log_path_structure', 'http-logs/{Y}-{m}-{d}.log');
-            $filePath = $this->generateFilePath($pathTemplate);
-
-            try {
-                $disk = Storage::disk($diskName);
-
-                if ($logFormat === 'json') {
-                    $logLine = json_encode($this->logData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE).PHP_EOL;
-                } else {
-                    // Basic line format (can be expanded)
-                    $req = $this->logData['request'];
-                    $res = $this->logData['response'];
-                    $logLine = sprintf(
-                        "[%s] %s %s - %d %s (%dms)\n",
-                        $req['start_time'],
-                        $req['method'],
-                        $req['uri'],
-                        $res['status_code'],
-                        $res['status_text'],
-                        $res['duration_ms'] ?? 0
-                    );
-                }
-
-                // Use append for log files
-                if (Str::endsWith($pathTemplate, ['.log', '.jsonl', '.txt'])) {
-                    $disk->append($filePath, $logLine);
-                } else {
-                    // Assume individual file per request (e.g., .json)
-                    $disk->put($filePath, $logLine);
-                }
-
-            } catch (Throwable $e) {
-                Log::error('RequestLoggerMiddleware: Failed to write log to disk.', [
-                    'disk'      => $diskName,
-                    'path'      => $filePath,
-                    'exception' => $e,
-                ]);
-            }
-        }
-    }
-
-    /**
-     * Generates the log file path based on the configured structure.
-     */
-    protected function generateFilePath(string $pathTemplate): string
-    {
-        $now = $this->startTime ?? new DateTimeImmutable; // Use start time for consistency
-        $replacements = [
-            '{Y}'    => $now->format('Y'),
-            '{m}'    => $now->format('m'),
-            '{d}'    => $now->format('d'),
-            '{H}'    => $now->format('H'),
-            '{uuid}' => Str::uuid()->toString(), // For unique file names if needed
-        ];
-
-        return str_replace(array_keys($replacements), array_values($replacements), $pathTemplate);
     }
 
     /**
@@ -291,54 +224,36 @@ class RequestLoggerMiddleware
      */
     protected function shouldLog(Request $request): bool
     {
-        $logProfileClass = config('request-logger.log_profile');
-
-        // If no profile is specified, log everything
-        if (! $logProfileClass) {
-            return true;
-        }
-
-        // Check if the configured profile class exists
-        if (! class_exists($logProfileClass)) {
-            Log::warning("RequestLoggerMiddleware: LogProfile class '{$logProfileClass}' not found in config. Logging request.", [
-                'request_uri' => $request->getRequestUri(),
-            ]);
-
-            return true; // Log if profile class is missing to be safe
-        }
+        $logProfileClass = config('request-logger.log_profile') ?: DefaultLogProfile::class;
+        $logProfile = null;
 
         try {
-            // Resolve the profile from the container
-            $logProfile = app($logProfileClass);
-
-            // Check if it implements the contract
-            if (! $logProfile instanceof LogProfile) {
-                Log::warning("RequestLoggerMiddleware: Configured LogProfile class '{$logProfileClass}' does not implement the TheCaretakers\\RequestLogger\\Contracts\\LogProfile interface. Logging request.", [
-                    'request_uri' => $request->getRequestUri(),
-                ]);
-
-                return true; // Log if contract not implemented
+            if (! class_exists($logProfileClass)) {
+                Log::warning("RequestLoggerMiddleware: LogProfile class '{$logProfileClass}' not found. Falling back to DefaultLogProfile.");
+                $logProfileClass = DefaultLogProfile::class;
             }
 
-            // Check if the method exists (redundant if using interface, but good practice)
-            if (! method_exists($logProfile, 'shouldLog')) {
-                Log::warning("RequestLoggerMiddleware: LogProfile class '{$logProfileClass}' does not have a 'shouldLog' method. Logging request.", [
-                    'request_uri' => $request->getRequestUri(),
-                ]);
+            $logProfile = $this->app->make($logProfileClass);
 
-                return true; // Log if method is missing
+            if (! $logProfile instanceof LogProfile) {
+                Log::warning("RequestLoggerMiddleware: Configured LogProfile class '{$logProfileClass}' does not implement LogProfile interface. Falling back to DefaultLogProfile.");
+                $logProfile = $this->app->make(DefaultLogProfile::class);
+            } elseif (! method_exists($logProfile, 'shouldLog')) {
+                Log::warning("RequestLoggerMiddleware: LogProfile class '{$logProfileClass}' does not have a 'shouldLog' method. Falling back to DefaultLogProfile.");
+                $logProfile = $this->app->make(DefaultLogProfile::class);
             }
 
             // Call the profile's method
             return $logProfile->shouldLog($request);
 
         } catch (Throwable $e) {
-            Log::error("RequestLoggerMiddleware: Error while executing LogProfile '{$logProfileClass}'. Logging request.", [
+            Log::error("RequestLoggerMiddleware: Error executing LogProfile '{$logProfileClass}'. Logging request as fallback.", [
                 'exception'   => $e,
                 'request_uri' => $request->getRequestUri(),
             ]);
 
-            return true; // Log if the profile throws an exception
+            // Log if the profile throws an exception
+            return true;
         }
     }
 }

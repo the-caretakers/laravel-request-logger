@@ -73,6 +73,12 @@ class RotateHttpLogsCommand extends Command
         try {
             $disk = Storage::disk($diskName);
             $allFiles = $disk->allFiles($baseLogPath);
+
+            // Filter out all files that aren't .log or .json
+            $allFiles = array_values(array_filter($allFiles, function ($filePath) {
+                return str_ends_with($filePath, '.log') || str_ends_with($filePath, '.json');
+            }));
+
             $deletedCount = 0;
             $keptCount = 0;
 
@@ -136,7 +142,6 @@ class RotateHttpLogsCommand extends Command
         $placeholderPosition = strpos($template, '{');
         if ($placeholderPosition === false) {
             // Assume the template is the base path if no placeholders
-            // Get directory part
             return dirname($template);
         }
 
