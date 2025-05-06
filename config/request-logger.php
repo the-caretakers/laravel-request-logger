@@ -52,6 +52,13 @@ return [
         'x-api-key',
         'x-csrf-token',
         'x-xsrf-token',
+        'cookie',
+        'session',
+        'csrf',
+        'access_token',
+        'refresh_token',
+        'client_secret',
+        'client_id',
     ],
 
     /*
