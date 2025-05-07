@@ -3,6 +3,7 @@
 namespace TheCaretakers\RequestLogger\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use TheCaretakers\RequestLogger\Console\Commands\BackupLogsCommand;
 use TheCaretakers\RequestLogger\Console\Commands\RotateHttpLogsCommand;
 use TheCaretakers\RequestLogger\Http\Middleware\RequestLoggerMiddleware;
 
@@ -52,6 +53,7 @@ class RequestLoggerServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 RotateHttpLogsCommand::class,
+                BackupLogsCommand::class,
             ]);
         }
     }
