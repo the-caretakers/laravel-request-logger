@@ -5,7 +5,9 @@ namespace TheCaretakers\RequestLogger\Providers;
 use Illuminate\Support\ServiceProvider;
 use TheCaretakers\RequestLogger\Console\Commands\BackupLogsCommand;
 use TheCaretakers\RequestLogger\Console\Commands\RotateHttpLogsCommand;
+use TheCaretakers\RequestLogger\Contracts\UserResolver;
 use TheCaretakers\RequestLogger\Http\Middleware\RequestLoggerMiddleware;
+use TheCaretakers\RequestLogger\Resolvers\DefaultUserResolver;
 
 class RequestLoggerServiceProvider extends ServiceProvider
 {
@@ -31,6 +33,16 @@ class RequestLoggerServiceProvider extends ServiceProvider
         // Register a singleton instance of the RequestLoggerMiddleware so we can
         // persist state between the middleware's handle() and terminate() methods.
         $this->app->singleton(RequestLoggerMiddleware::class);
+
+        $this->app->bind(UserResolver::class, function ($app) {
+            $resolverClass = $app['config']['request-logger.user_resolver'];
+
+            if ($resolverClass && class_exists($resolverClass)) {
+                return $app->make($resolverClass);
+            }
+
+            return null;
+        });
     }
 
     /**

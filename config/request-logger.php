@@ -156,4 +156,15 @@ return [
     */
     'log_response_body' => false,
 
+    /*
+    |--------------------------------------------------------------------------
+    | User Resolver
+    |--------------------------------------------------------------------------
+    | Class responsible for resolving the current user details.
+    | Must implement \\TheCaretakers\\RequestLogger\\Contracts\\UserResolver::class
+    | The default implementation uses the Auth facade to resolve the user's ID only.
+    | Leave null to disable user logging.
+    */
+    'user_resolver' => \TheCaretakers\RequestLogger\Resolvers\DefaultUserResolver::class,
+
 ];

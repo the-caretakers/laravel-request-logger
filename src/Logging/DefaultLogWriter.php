@@ -7,10 +7,18 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use TheCaretakers\RequestLogger\Contracts\LogWriter;
+use TheCaretakers\RequestLogger\Contracts\UserResolver;
 use Throwable;
 
 class DefaultLogWriter implements LogWriter
 {
+    protected ?UserResolver $userResolver;
+
+    public function __construct()
+    {
+        //
+    }
+
     /**
      * Write the log data using the default channel or filesystem logic.
      *
@@ -18,6 +26,13 @@ class DefaultLogWriter implements LogWriter
      */
     public function write(array $logData): void
     {
+        // Resolve UserResolver from the service container
+        $this->userResolver = app(UserResolver::class);
+
+        if ($this->userResolver) {
+            $logData['user'] = $this->userResolver->resolve();
+        }
+
         $logChannel = config('request-logger.log_channel');
         $logFormat = config('request-logger.log_format', 'json');
 
@@ -53,7 +68,7 @@ class DefaultLogWriter implements LogWriter
                     $req = $logData['request'];
                     $res = $logData['response'];
                     $logLine = sprintf(
-                        "[%s] %s %s - %d %s (%sms)\n", // Changed %dms to %sms for float
+                        "[%s] %s %s - %d %s (%sms)\n",
                         $req['start_time'],
                         $req['method'],
                         $req['uri'],
