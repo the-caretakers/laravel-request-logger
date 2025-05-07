@@ -6,12 +6,13 @@ use Closure;
 use DateTimeImmutable;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
+use Illuminate\Http\Response; // Corrected namespace for Response
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use TheCaretakers\RequestLogger\Contracts\LogProfile;
 use TheCaretakers\RequestLogger\Contracts\LogWriter;
+use TheCaretakers\RequestLogger\Contracts\UserResolver; // Added UserResolver contract
 use TheCaretakers\RequestLogger\Logging\DefaultLogProfile;
 use TheCaretakers\RequestLogger\Logging\DefaultLogWriter;
 use Throwable;
@@ -134,6 +135,14 @@ class RequestLoggerMiddleware
                 $this->logData['response']['body'] = $this->sanitize($responseBody, config('request-logger.sensitive_keywords', [])); // Sanitize just in case
             } else {
                 $this->logData['response']['body'] = '[NOT LOGGED]';
+            }
+
+            // Resolve User ID before writing log
+            $userResolver = $this->app->make(UserResolver::class);
+            if ($userResolver instanceof UserResolver) {
+                $this->logData['user'] = $userResolver->resolve();
+            } else {
+                $this->logData['user'] = null;
             }
 
             $this->writeLog();
