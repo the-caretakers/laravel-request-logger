@@ -44,8 +44,35 @@ return [
     | Class responsible for writing the log record.
     | Must implement \TheCaretakers\RequestLogger\Contracts\LogWriter::class
     | Leave null to use the default writer (uses log_channel or disk).
+    |
+    | Options:
+    |   - \TheCaretakers\RequestLogger\Logging\DefaultLogWriter::class
+    |   - \TheCaretakers\RequestLogger\Logging\QueuedLogWriter::class
+    |   - Or make your own!
     */
     'log_writer' => \TheCaretakers\RequestLogger\Logging\DefaultLogWriter::class,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Queue Name
+    |--------------------------------------------------------------------------
+    | If using the QueuedLogWriter, this specifies the queue connection
+    | name on which the log processing job should be dispatched.
+    | Defaults to 'default'.
+    */
+    'queue_name' => env('REQUEST_LOGGER_QUEUE', 'default'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Queue Connection
+    |--------------------------------------------------------------------------
+    |
+    | If using the QueuedLogWriter, this specifies the queue connection
+    | that should be used for dispatching the log processing job.
+    | If null, the default queue connection will be used.
+    |
+    */
+    'queue_connection' => env('REQUEST_LOGGER_QUEUE_CONNECTION', null),
 
     /*
     |--------------------------------------------------------------------------
