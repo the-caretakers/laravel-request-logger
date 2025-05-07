@@ -17,7 +17,7 @@ class RotateHttpLogsCommand extends Command
      * @var string
      */
     protected $signature = 'request-logger:rotate
-                            {--days=30 : The number of days of logs to keep.}
+                            {--days=7 : The number of days of logs to keep.}
                             {--disk= : Specify the disk (overrides config).}
                             {--dry-run : Simulate the rotation without deleting files.}';
 
@@ -40,7 +40,11 @@ class RotateHttpLogsCommand extends Command
             return Command::FAILURE;
         }
 
-        $diskName = $this->option('disk') ?: config('request-logger.disk');
+        $diskName = $this->option('disk')
+            // Prefer the backup disk if specified
+            ?? config('request-logger.backup_disk')
+            ?? config('request-logger.disk');
+
         if (! $diskName) {
             $this->error('Log rotation disk is not configured. Set REQUEST_LOGGER_DISK in .env or request-logger.disk in config.');
 
@@ -76,7 +80,7 @@ class RotateHttpLogsCommand extends Command
 
             // Filter out all files that aren't .log or .json
             $allFiles = array_values(array_filter($allFiles, function ($filePath) {
-                return str_ends_with($filePath, '.log') || str_ends_with($filePath, '.json');
+                return str_contains($filePath, '.log') || str_contains($filePath, '.json');
             }));
 
             $deletedCount = 0;
