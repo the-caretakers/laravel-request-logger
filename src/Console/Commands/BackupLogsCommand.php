@@ -56,7 +56,7 @@ class BackupLogsCommand extends Command
         // Determine the final destination file path, handling potential name collisions
         $baseDestinationDirectory = dirname($sourceFilePath);
         if ($baseDestinationDirectory === '.') {
-            $baseDestinationDirectory = ''; // Store in root of the disk if no directory in source path
+            $baseDestinationDirectory = '';
         }
         $originalFilename = basename($sourceFilePath);
 
@@ -67,7 +67,7 @@ class BackupLogsCommand extends Command
             $currentFilenameToTry = $originalFilename . ($attempt > 0 ? '.' . $attempt : '');
             $potentialPath = ($baseDestinationDirectory ? $baseDestinationDirectory . '/' : '') . $currentFilenameToTry;
 
-            if (!$destinationDisk->exists($potentialPath)) {
+            if (! $destinationDisk->exists($potentialPath)) {
                 $finalDestinationFilePath = $potentialPath;
                 break;
             }
@@ -77,12 +77,7 @@ class BackupLogsCommand extends Command
         $this->info("Destination path will be: {$finalDestinationFilePath}");
 
         try {
-            // Ensure the destination directory exists if the path includes directories
-            $actualDestinationDirectory = dirname($finalDestinationFilePath);
-            if ($actualDestinationDirectory !== '.' && $actualDestinationDirectory !== '' && !$destinationDisk->exists($actualDestinationDirectory)) {
-                $destinationDisk->makeDirectory($actualDestinationDirectory);
-                $this->info("Created directory {$actualDestinationDirectory} on disk '{$destinationDiskName}'.");
-            }
+            // For S3 and other object stores, directories are created implicitly when objects are put.
 
             // Stream copy for potentially large files
             $stream = $sourceDisk->readStream($sourceFilePath);
