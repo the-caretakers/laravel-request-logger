@@ -40,6 +40,12 @@ class RequestLoggerMiddleware
      */
     public function handle(Request $request, Closure $next)
     {
+
+        // Check if logging is enabled globally
+        if (! config('request-logger.enabled', true)) {
+            return $next($request);
+        }
+
         // Decide whether to log this request before doing anything else
         if (! $this->shouldLog($request)) {
             return $next($request);
@@ -68,6 +74,11 @@ class RequestLoggerMiddleware
      */
     public function terminate(Request $request, $response): void
     {
+        // Check if logging is enabled globally (again, in case config changed during request)
+        if (! config('request-logger.enabled', true)) {
+            return;
+        }
+
         // If startTime is null, it means shouldLog returned false in handle()
         if ($this->startTime === null) {
             return;

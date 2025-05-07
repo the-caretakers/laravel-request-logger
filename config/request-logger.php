@@ -1,17 +1,31 @@
 <?php
 
-use TheCaretakers\RequestLogger\Logging\DefaultLogProfile;
-use TheCaretakers\RequestLogger\Logging\DefaultLogWriter;
-
 return [
     /*
     |--------------------------------------------------------------------------
-    | Filesystem Disk
+    | Enabled
     |--------------------------------------------------------------------------
-    | Specify the filesystem disk where logs should be stored.
-    | Uses the default filesystem disk if set to null.
+    | Master switch to enable or disable request logging.
     */
-    'disk' => env('REQUEST_LOGGER_DISK', config('filesystems.default')),
+    'enabled' => env('REQUEST_LOGGER_ENABLED', true),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Filesystem Disk (for active logging)
+    |--------------------------------------------------------------------------
+    | Specify the filesystem disk where logs should be actively written.
+    | Defaults to 'local'.
+    */
+    'disk' => env('REQUEST_LOGGER_DISK', 'local'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Backup Disk (for archival)
+    |--------------------------------------------------------------------------
+    | Specify the filesystem disk where logs should be transferred for archival.
+    | Example: 's3'. Set to null to disable automated transfer.
+    */
+    'backup_disk' => env('REQUEST_LOGGER_BACKUP_DISK', null),
 
     /*
     |--------------------------------------------------------------------------
