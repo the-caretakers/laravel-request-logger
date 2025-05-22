@@ -37,11 +37,10 @@ class DefaultLogWriter implements LogWriter
                 ]);
             }
         } else {
-            // Log directly to filesystem
+            // Log directly to filesystem with proper concurrency handling
             $diskName = config('request-logger.disk');
             if (! $diskName) {
                 Log::warning('RequestLoggerMiddleware: Filesystem disk not configured for DefaultLogWriter.');
-
                 return;
             }
 
@@ -68,9 +67,9 @@ class DefaultLogWriter implements LogWriter
                     );
                 }
 
-                // Use append for log files
+                // Use file locking to prevent race conditions
                 if (Str::endsWith($pathTemplate, ['.log', '.jsonl', '.txt'])) {
-                    $disk->append($filePath, $logLine);
+                    $this->appendWithLock($disk, $filePath, $logLine);
                 } else {
                     // Assume individual file per request (e.g., .json)
                     $disk->put($filePath, $logLine);
@@ -81,9 +80,45 @@ class DefaultLogWriter implements LogWriter
                     'disk'      => $diskName,
                     'path'      => $filePath,
                     'exception' => $e,
-                    'logData'   => $logData, // Include log data for context
+                    'logData'   => $logData,
                 ]);
             }
+        }
+    }
+
+    /**
+     * Append to file with exclusive locking to prevent race conditions
+     */
+    protected function appendWithLock($disk, string $filePath, string $content): void
+    {
+        // Check if this is a local disk by trying to get the path
+        try {
+            // This method exists for local disks and will throw for others
+            $fullPath = $disk->path($filePath);
+            $directory = dirname($fullPath);
+
+            // Ensure directory exists
+            if (!is_dir($directory)) {
+                mkdir($directory, 0755, true);
+            }
+
+            // Use file_put_contents with LOCK_EX and FILE_APPEND flags for atomic writes
+            $result = file_put_contents($fullPath, $content, LOCK_EX | FILE_APPEND);
+
+            if ($result === false) {
+                throw new \RuntimeException("Failed to write to log file: {$fullPath}");
+            }
+        } catch (\BadMethodCallException $e) {
+            // Not a local disk (e.g., S3), fall back to regular append
+            // Note: This still has potential race conditions but cloud storage handles it better
+            $disk->append($filePath, $content);
+        } catch (Throwable $e) {
+            // Any other error, fall back to regular append
+            Log::warning('RequestLogger: Could not use file locking, falling back to regular append', [
+                'path' => $filePath,
+                'error' => $e->getMessage()
+            ]);
+            $disk->append($filePath, $content);
         }
     }
 
@@ -110,7 +145,7 @@ class DefaultLogWriter implements LogWriter
             '{m}'    => $now->format('m'),
             '{d}'    => $now->format('d'),
             '{H}'    => $now->format('H'),
-            '{uuid}' => Str::uuid()->toString(), // For unique file names if needed
+            '{uuid}' => Str::uuid()->toString(),
         ];
 
         return str_replace(array_keys($replacements), array_values($replacements), $pathTemplate);
